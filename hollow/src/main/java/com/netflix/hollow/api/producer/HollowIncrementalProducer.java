@@ -125,8 +125,21 @@ public class HollowIncrementalProducer {
         return producer.getObjectMapper().extractPrimaryKey(obj);
     }
 
-    private interface Callback {
-        void run(Object obj);
+    private void executeInParallel(Collection<Object> objList, final Callback callback) {
+        SimultaneousExecutor executor = new SimultaneousExecutor(threadsPerCpu);
+        for(final Object obj : objList) {
+            executor.execute(new Runnable() {
+                public void run() {
+                    callback.run(obj);
+                }
+            });
+        }
+
+        try {
+            executor.awaitSuccessfulCompletion();
+        } catch(Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private class AddOrModifyCallback implements Callback {
@@ -150,20 +163,7 @@ public class HollowIncrementalProducer {
         }
     }
 
-    private void executeInParallel(Collection<Object> objList, final Callback callback) {
-        SimultaneousExecutor executor = new SimultaneousExecutor(threadsPerCpu);
-        for(final Object obj : objList) {
-            executor.execute(new Runnable() {
-                public void run() {
-                    callback.run(obj);
-                }
-            });
-        }
-
-        try {
-            executor.awaitSuccessfulCompletion();
-        } catch(Exception e) {
-            throw new RuntimeException(e);
-        }
+    private interface Callback {
+        void run(Object obj);
     }
 }
