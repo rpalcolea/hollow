@@ -18,7 +18,10 @@
 package com.netflix.hollow.api.producer;
 
 import com.netflix.hollow.api.consumer.HollowConsumer.BlobRetriever;
+import com.netflix.hollow.core.util.SimultaneousExecutor;
 import com.netflix.hollow.core.write.objectmapper.RecordPrimaryKey;
+
+import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -33,7 +36,8 @@ public class HollowIncrementalProducer {
     private final HollowProducer producer;
     private final ConcurrentHashMap<RecordPrimaryKey, Object> mutations;
     private final HollowProducer.Populator populator;
-    
+    private final double threadsPerCpu;
+
     public HollowIncrementalProducer(HollowProducer producer) {
         this(producer, 1.0d);
     }
@@ -42,6 +46,7 @@ public class HollowIncrementalProducer {
         this.producer = producer;
         this.mutations = new ConcurrentHashMap<RecordPrimaryKey, Object>();
         this.populator = new HollowIncrementalCyclePopulator(mutations, threadsPerCpu);
+        this.threadsPerCpu = threadsPerCpu;
     }
 
     public void restore(long versionDesired, BlobRetriever blobRetriever) {
@@ -52,15 +57,43 @@ public class HollowIncrementalProducer {
         RecordPrimaryKey pk = extractRecordPrimaryKey(obj);
         mutations.put(pk, obj);
     }
-    
+
+    public void addOrModify(Collection<Object> objList) {
+        for(Object obj : objList) {
+            addOrModify(obj);
+        }
+    }
+
+    public void addOrModifyInParallel(Collection<Object> objList) {
+       executeInParallel(objList, new AddOrModifyCallback());
+    }
+
     public void delete(Object obj) {
         RecordPrimaryKey pk = extractRecordPrimaryKey(obj);
         delete(pk);
     }
 
+    public void delete(Collection<Object> objList) {
+        for(Object obj : objList) {
+            delete(obj);
+        }
+    }
+
+    public void deleteInParallel(Collection<Object> objList) {
+        executeInParallel(objList, new DeleteCallback());
+    }
+
     public void discard(Object obj) {
         RecordPrimaryKey pk = extractRecordPrimaryKey(obj);
         discard(pk);
+    }
+
+    public void discard(Collection<Object> objList) {
+        executeInParallel(objList, new DiscardCallback());
+    }
+
+    public void discardInParallel(Collection<Object> objList) {
+        executeInParallel(objList, new DiscardCallback());
     }
     
     public void delete(RecordPrimaryKey key) {
@@ -90,5 +123,47 @@ public class HollowIncrementalProducer {
 
     private RecordPrimaryKey extractRecordPrimaryKey(Object obj) {
         return producer.getObjectMapper().extractPrimaryKey(obj);
+    }
+
+    private interface Callback {
+        void run(Object obj);
+    }
+
+    private class AddOrModifyCallback implements Callback {
+        @Override
+        public void run(Object obj) {
+            addOrModify(obj);
+        }
+    }
+
+    private class DeleteCallback implements Callback {
+        @Override
+        public void run(Object obj) {
+            delete(obj);
+        }
+    }
+
+    private class DiscardCallback implements Callback {
+        @Override
+        public void run(Object obj) {
+            discard(obj);
+        }
+    }
+
+    private void executeInParallel(Collection<Object> objList, final Callback callback) {
+        SimultaneousExecutor executor = new SimultaneousExecutor(threadsPerCpu);
+        for(final Object obj : objList) {
+            executor.execute(new Runnable() {
+                public void run() {
+                    callback.run(obj);
+                }
+            });
+        }
+
+        try {
+            executor.awaitSuccessfulCompletion();
+        } catch(Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
