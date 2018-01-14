@@ -65,7 +65,12 @@ public class HollowIncrementalProducer {
     }
 
     public void addOrModifyInParallel(Collection<Object> objList) {
-       executeInParallel(objList, new AddOrModifyCallback());
+        executeInParallel(objList, new Callback() {
+            @Override
+            public void call(Object obj) {
+                addOrModify(obj);
+            }
+        });
     }
 
     public void delete(Object obj) {
@@ -80,7 +85,12 @@ public class HollowIncrementalProducer {
     }
 
     public void deleteInParallel(Collection<Object> objList) {
-        executeInParallel(objList, new DeleteCallback());
+        executeInParallel(objList, new Callback() {
+            @Override
+            public void call(Object obj) {
+                delete(obj);
+            }
+        });
     }
 
     public void discard(Object obj) {
@@ -89,11 +99,18 @@ public class HollowIncrementalProducer {
     }
 
     public void discard(Collection<Object> objList) {
-        executeInParallel(objList, new DiscardCallback());
+        for(Object obj : objList) {
+            discard(obj);
+        }
     }
 
     public void discardInParallel(Collection<Object> objList) {
-        executeInParallel(objList, new DiscardCallback());
+        executeInParallel(objList, new Callback() {
+            @Override
+            public void call(Object obj) {
+                discard(obj);
+            }
+        });
     }
     
     public void delete(RecordPrimaryKey key) {
@@ -130,7 +147,7 @@ public class HollowIncrementalProducer {
         for(final Object obj : objList) {
             executor.execute(new Runnable() {
                 public void run() {
-                    callback.run(obj);
+                    callback.call(obj);
                 }
             });
         }
@@ -142,28 +159,7 @@ public class HollowIncrementalProducer {
         }
     }
 
-    private class AddOrModifyCallback implements Callback {
-        @Override
-        public void run(Object obj) {
-            addOrModify(obj);
-        }
-    }
-
-    private class DeleteCallback implements Callback {
-        @Override
-        public void run(Object obj) {
-            delete(obj);
-        }
-    }
-
-    private class DiscardCallback implements Callback {
-        @Override
-        public void run(Object obj) {
-            discard(obj);
-        }
-    }
-
     private interface Callback {
-        void run(Object obj);
+        void call(Object obj);
     }
 }
