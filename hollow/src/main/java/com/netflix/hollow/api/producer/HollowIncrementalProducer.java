@@ -142,6 +142,14 @@ public class HollowIncrementalProducer {
         return producer.getObjectMapper().extractPrimaryKey(obj);
     }
 
+    /**
+     * Parallel execution. Modifies the mutation ConcurrentHashMap in parallel based on a Callback.
+     * <p>
+     * Note: This could be replaced with Java 8 parallelStream and lambadas instead of Callback interface
+     * </p>
+     * @param objList
+     * @param callback
+     */
     private void executeInParallel(Collection<Object> objList, final Callback callback) {
         SimultaneousExecutor executor = new SimultaneousExecutor(threadsPerCpu);
         for(final Object obj : objList) {
